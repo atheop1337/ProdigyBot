@@ -44,3 +44,13 @@ class _States:
 
     class DeleteTask(StatesGroup):
         task_id = State()
+
+    class NewSubTask(StatesGroup):
+        task_id = State()
+        subtask_name = State()
+
+    class EditSubTask(StatesGroup):
+        subtask_id = State()
+
+    class DeleteSubTask(StatesGroup):
+        subtask_id = State()

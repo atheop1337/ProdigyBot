@@ -72,7 +72,7 @@ class Handlers:
         async def _handle_message(
             self, message: types.Message, state: FSMContext, state_name
         ):
-            projects = await self._parent._db.fetch_projects(user_id)
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
 
             logging.info(
                 f"User with id {self._parent._user_id} and name {self._parent._user_name} fetched projects via command"
@@ -83,12 +83,25 @@ class Handlers:
                 for project in projects:
                     tasks = await self._parent._db.fetch_tasks(project["id"])
                     if tasks:
-                        task_list = "\n".join(
-                            f"Task ID: {task['id']}, Name: {task['name']}, "
-                            f"Description: {task['description']}, Deadline: {task['deadline']}, "
-                            f"Priority: {task['priority']}, Status: {task['status']}"
-                            for task in tasks
-                        )
+                        task_list = []
+                        for task in tasks:
+                            subtasks = await self._parent._db.fetch_subtasks(
+                                project["id"]
+                            )
+                            if subtasks:
+                                subtask_list = "\n".join(
+                                    f"Subtask ID: {subtask['id']}, Name: {subtask['name']}, Status: {subtask['status']}"
+                                    for subtask in subtasks
+                                )
+                            else:
+                                subtask_list = "\tNo subtasks for this task."
+
+                            task_list.append(
+                                f"Task ID: {task['id']}, Name: {task['name']}, "
+                                f"Description: {task['description']}, Deadline: {task['deadline']}, "
+                                f"Priority: {task['priority']}, Status: {task['status']}\nSubtasks:\n{subtask_list}"
+                            )
+                        task_list = "\n".join(task_list)
                     else:
                         task_list = "No tasks for this project."
 
@@ -107,8 +120,7 @@ class Handlers:
         async def _handle_callback_query(
             self, callback_query: types.CallbackQuery, state: FSMContext, state_name
         ):
-
-            projects = await self._parent._db.fetch_projects(user_id)
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
 
             if projects:
                 projects_list = []
@@ -118,12 +130,25 @@ class Handlers:
                         f"Fetched tasks for project {project['id']} with name '{project['name']}': {tasks}"
                     )
                     if tasks:
-                        task_list = "\n".join(
-                            f"Task ID: {task['id']}, Name: {task['name']}, "
-                            f"Description: {task['description']}, Deadline: {task['deadline']}, "
-                            f"Priority: {task['priority']}, Status: {task['status']}"
-                            for task in tasks
-                        )
+                        task_list = []
+                        for task in tasks:
+                            subtasks = await self._parent._db.fetch_subtasks(
+                                project["id"]
+                            )
+                            if subtasks:
+                                subtask_list = "\n".join(
+                                    f"\tSubtask ID: {subtask['id']}, Name: {subtask['name']}"
+                                    for subtask in subtasks
+                                )
+                            else:
+                                subtask_list = "\tNo subtasks for this task."
+
+                            task_list.append(
+                                f"Task ID: {task['id']}, Name: {task['name']}, "
+                                f"Description: {task['description']}, Deadline: {task['deadline']}, "
+                                f"Priority: {task['priority']}, Status: {task['status']}\nSubtasks:\n{subtask_list}"
+                            )
+                        task_list = "\n".join(task_list)
                     else:
                         task_list = "No tasks for this project."
 
@@ -137,7 +162,7 @@ class Handlers:
             else:
                 response_message = "You have no projects."
 
-            await message.answer(response_message)
+            await callback_query.message.answer(response_message)
 
     class NewProjectHandler(BaseHandler):
         async def _handle_message(
@@ -183,9 +208,11 @@ class Handlers:
             data = await state.get_data()
             project_name = data.get("project_name")
             project_description = message.text
+
             logging.info(
                 f"User with id {self._parent._user_id} provided a description for their project {project_name}"
             )
+
             _new_project = await self._parent._db.new_project(
                 self._parent._user_id, project_name, project_description
             )
@@ -470,8 +497,10 @@ class Handlers:
 
         async def _handle_task_name(self, message: types.Message, state: FSMContext):
             task_name = message.text
+            data = await state.get_data()
+            project_id = data.get("project_id")
             logging.info(
-                f"User {self._parent._user_id} entered task name for project {state.get_data().get('project_id')}: {task_name}."
+                f"User {self._parent._user_id} entered task name for project {project_id}: {task_name}."
             )
             await state.update_data(task_name=task_name)
             await message.answer("Введите описание таска.")
@@ -712,6 +741,260 @@ class Handlers:
             else:
                 _final_message = "Ошибка при удалении таска. Попробуйте позже."
                 logging.error(f"Failed to delete task with ID {task_id}.")
+
+            await message.answer(_final_message)
+            await state.clear()
+
+    class NewSubTaskHandler(BaseHandler):
+        async def _handle_message(
+            self, message: types.Message, state: FSMContext, state_name
+        ):
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            if not projects:
+                await message.answer("У вас нет проектов для создания подзадачи.")
+                await state.clear()
+                return
+
+            tasks = await self._parent._db.fetch_tasks(projects[0]["id"])
+            if not tasks:
+                await message.answer("У вас нет тасков для создания подзадачи.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started creating new subtask via command"
+                )
+                await message.answer(text="Выберите айди таска для создания подзадачи")
+                await state.set_state(_States.NewSubTask.task_id)
+            elif state_name == _States.NewSubTask.task_id:
+                await self._handle_task_id(message, state)
+            elif state_name == _States.NewSubTask.subtask_name:
+                await self._handle_subtask_name(message, state)
+
+        async def _handle_callback_query(
+            self, callback_query: types.CallbackQuery, state: FSMContext, state_name
+        ):
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            if not projects:
+                await callback_query.message.answer(
+                    "У вас нет проектов для создания подзадачи."
+                )
+                await state.clear()
+                return
+
+            tasks = await self._parent.db.fetch_tasks(projects[0]["id"])
+            if not tasks:
+                await callback_query.message.answer(
+                    "У вас нет тасков для создания подзадачи."
+                )
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started creating new subtask via command"
+                )
+                await message.answer(text="Выберите айди таска для создания подзадачи")
+                await state.set_state(_States.NewSubTask.task_id)
+            elif state_name == _States.NewSubTask.task_id:
+                await self._handle_task_id(message, state)
+            elif state_name == _States.NewSubTask.subtask_name:
+                await self._handle_subtask_name(message, state)
+
+        async def _handle_task_id(self, message: types.Message, state: FSMContext):
+            task_id = message.text
+            try:
+                task_id = int(task_id)
+            except ValueError:
+                await message.answer("ID таска должен быть числом.")
+                await state.clear()
+                return
+
+            _exist = self._parent._db.fetch_task(task_id)
+            if not _exist:
+                await message.answer(
+                    "Таска с таким ID не существует. Попробуйте еще раз."
+                )
+                await state.clear()
+                return
+
+            await state.update_data(task_id=task_id)
+            await message.answer("Выберите название подзадачи")
+            await state.set_state(_States.NewSubTask.subtask_name)
+
+        async def _handle_subtask_name(self, message: types.Message, state: FSMContext):
+            subtask_name = message.text
+            data = await state.get_data()
+            task_id = data.get("task_id")
+
+            _check = await self._parent._db.add_subtask(task_id, subtask_name)
+
+            if _check:
+                _final_message = (
+                    "Подзадача успешно создана. Проверьте командой /projects."
+                )
+                logging.info(f"Subtask successfully added with ID {task_id}.")
+            else:
+                _final_message = "Ошибка при создании подзадачи. Попробуйте позже."
+                logging.error(f"Failed to add subtask with ID {task_id}.")
+
+            await message.answer(_final_message)
+            await state.clear()
+
+    class EditSubTaskHandler(BaseHandler):
+        async def _handle_message(
+            self, message: types.Message, state: FSMContext, state_name
+        ):
+            subtasks = await self._parent._db.user_has_subtasks(self._parent._user_id)
+
+            if not subtasks:
+                await message.answer("У вас нет подзадач для редактирования.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started editing subtask via command"
+                )
+                await message.answer(
+                    text="Выберите ID подзадачи для редактирования (установки как выполненное)"
+                )
+                await state.set_state(_States.EditSubTask.subtask_id)
+
+            elif state_name == _States.EditSubTask.subtask_id:
+                await self._handle_subtask_id(message, state)
+
+        async def _handle_callback_query(
+            self, callback_query: types.CallbackQuery, state: FSMContext, state_name
+        ):
+            subtasks = await self._parent._db.user_has_subtasks(self._parent._user_id)
+
+            if not subtasks:
+                await message.answer("У вас нет подзадач для редактирования.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started editing subtask via command"
+                )
+                await message.answer(
+                    text="Выберите ID подзадачи для редактирования (установки как выполненное)"
+                )
+                await state.set_state(_States.EditSubTask.subtask_id)
+
+            elif state_name == _States.EditSubTask.subtask_id:
+                await self._handle_subtask_id(message, state)
+
+        async def _handle_subtask_id(self, message: types.Message, state: FSMContext):
+            subtask_id = message.text
+            try:
+                subtask_id = int(subtask_id)
+            except ValueError:
+                await message.answer("ID подзадачи должен быть числом.")
+                await state.clear()
+                return
+
+            _exist = await self._parent._db.fetch_subtask(subtask_id)
+
+            if not _exist:
+                await message.answer(
+                    "Подзадача с таким ID не существует. Попробуйте еще раз."
+                )
+                await state.clear()
+                return
+
+            _check = await self._parent._db.edit_subtask(subtask_id)
+
+            if _check:
+                _final_message = (
+                    "Статус подзадачи успешно изменен. Проверьте командой /projects."
+                )
+                logging.info(
+                    f"Subtask status successfully updated with ID {subtask_id}."
+                )
+            else:
+                _final_message = (
+                    "Ошибка при изменении статуса подзадачи. Попробуйте позже."
+                )
+                logging.error(f"Failed to update subtask status with ID {subtask_id}.")
+
+            await message.answer(_final_message)
+            await state.clear()
+
+    class DeleteSubTaskHandler(BaseHandler):
+        async def _handle_message(
+            self, message: types.Message, state: FSMContext, state_name
+        ):
+            subtasks = await self._parent._db.user_has_subtasks(self._parent._user_id)
+
+            if not subtasks:
+                await message.answer("У вас нет подзадач для удаления.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started deleting subtask via command"
+                )
+                await message.answer(text="Выберите ID подзадачи для удаления")
+                await state.set_state(_States.DeleteSubTask.subtask_id)
+
+            elif state_name == _States.DeleteSubTask.subtask_id:
+                await self._handle_subtask_id(message, state)
+
+        async def _handle_callback_query(
+            self, callback_query: types.CallbackQuery, state: FSMContext, state_name
+        ):
+            subtasks = await self._parent._db.user_has_subtasks(self._parent._user_id)
+
+            if not subtasks:
+                await message.answer("У вас нет подзадач для удаления.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started deleting subtask via button"
+                )
+                await message.answer(text="Выберите ID подзадачи для удаления")
+                await state.set_state(_States.EditSubTask.subtask_id)
+
+            elif state_name == _States.EditSubTask.subtask_id:
+                await self._handle_subtask_id(message, state)
+
+        async def _handle_subtask_id(
+            self, message: types.Message, state: FSMContext
+        ):
+            subtask_id = message.text
+
+            try:
+                subtask_id = int(subtask_id)
+            except ValueError:
+                await message.answer("ID подзадачи должен быть числом.")
+                await state.clear()
+                return
+                
+            _exist = await self._parent._db.fetch_subtask(subtask_id)
+
+            if not _exist:
+                await message.answer(
+                    "Подзадача с таким ID не существует. Попробуйте еще раз."
+                )
+                await state.clear()
+                return
+
+            _check = await self._parent._db.delete_subtask(subtask_id)
+
+            if _check:
+                _final_message = (
+                    "Подзадача успешно удалена. Проверьте командой /projects."
+                )
+                logging.info(f"Subtask successfully deleted with ID {subtask_id}.")
+            else:
+                _final_message = "Ошибка при удалении подзадачи. Попробуйте позже."
+                logging.error(f"Failed to delete subtask with ID {subtask_id}.")
 
             await message.answer(_final_message)
             await state.clear()

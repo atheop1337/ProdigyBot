@@ -319,6 +319,133 @@ class Database:
             logging.error(f"Error occurred while deleting task: {e}")
             return False
 
+    async def add_subtask(self, task_id: int, name: str) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO subtasks (task_id, name) VALUES (?,?)",
+                        (task_id, name),
+                    )
+                    await db.commit()
+                    logging.info(
+                        f"Added subtask with name {name} to task with id {task_id}"
+                    )
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while adding subtask: {e}")
+            return False
+
+    async def fetch_subtasks(self, project_id: int) -> list:
+        subtasks = []
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, name, status FROM subtasks WHERE task_id IN (SELECT id FROM tasks WHERE project_id =?)",
+                        (project_id,),
+                    )
+                    rows = await cursor.fetchall()
+                    for row in rows:
+                        subtasks.append(
+                            {"id": row[0], "name": row[1], "status": row[2]}
+                        )
+                    logging.info(
+                        f"Fetched all subtasks for project with id {project_id}"
+                    )
+        except Exception as e:
+            logging.error(f"Error occurred while fetching subtasks: {e}")
+        return subtasks
+
+    async def fetch_subtask(self, subtask_id: int) -> list:
+        subtask = None
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, name, status FROM subtasks WHERE id =?",
+                        (subtask_id,),
+                    )
+                    row = await cursor.fetchone()
+                    if row:
+                        subtask = {"id": row[0], "name": row[1], "status": row[2]}
+                        logging.info(f"Fetched subtask with id {subtask_id}")
+                    else:
+                        logging.info(f"Subtask with id {subtask_id} not found.")
+        except Exception as e:
+            logging.error(
+                f"Error occurred while fetching subtask with id {subtask_id}: {e}"
+            )
+        return subtask
+
+    async def user_has_subtasks(self, user_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id FROM projects WHERE user_id = ?", (user_id,)
+                    )
+                    projects = await cursor.fetchall()
+
+                    if not projects:
+                        logging.info(f"User with id {user_id} has no projects.")
+                        return False
+
+                    for project in projects:
+                        project_id = project[0]
+                        await cursor.execute(
+                            """
+                            SELECT COUNT(*)
+                            FROM subtasks
+                            WHERE task_id IN (SELECT id FROM tasks WHERE project_id = ?)
+                            """,
+                            (project_id,),
+                        )
+                        subtask_count = await cursor.fetchone()
+
+                        if subtask_count and subtask_count[0] > 0:
+                            logging.info(
+                                f"User with id {user_id} has subtasks in project {project_id}."
+                            )
+                            return True
+
+                    logging.info(
+                        f"User with id {user_id} has no subtasks in any project."
+                    )
+                    return False
+        except Exception as e:
+            logging.error(f"Error occurred while checking user subtasks: {e}")
+            return False
+
+    async def edit_subtask(self, subtask_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE subtasks SET status='completed' WHERE id =?",
+                        (subtask_id,),
+                    )
+                    await db.commit()
+                    logging.info(f"Updated subtask with id {subtask_id} to completed")
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while editing subtask: {e}")
+            return False
+
+    async def delete_subtask(self, subtask_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "DELETE FROM subtasks WHERE id =?", (subtask_id,)
+                    )
+                    await db.commit()
+                    logging.info(f"Deleted subtask with id {subtask_id}")
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while deleting subtask: {e}")
+            return False
+
     async def close(self) -> None:
         if self.conn:
             await self.conn.close()

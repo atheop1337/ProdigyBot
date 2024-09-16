@@ -11,6 +11,9 @@ from modules.handlers import (
     new_task_handler,
     edit_task_handler,
     delete_task_handler,
+    new_subtask_handler,
+    edit_subtask_handler,
+    delete_subtask_handler,
 )
 from modules.libraries.utils import _States
 from typing import Union
@@ -62,7 +65,7 @@ async def projects_handler(
 
 
 @router.callback_query(F.data == "create_task")
-@router.message(Command("add_task"))
+@router.message(Command("new_task"))
 @router.message(_States.NewTask.project_id)
 @router.message(_States.NewTask.task_name)
 @router.message(_States.NewTask.task_description)
@@ -91,3 +94,31 @@ async def delete_task_handler_func(
     type: Union[types.Message, types.CallbackQuery], state: FSMContext
 ):
     await delete_task_handler.handle(type, state)
+
+
+@router.callback_query(F.data == "new_subtask")
+@router.message(Command("new_subtask"))
+@router.message(_States.NewSubTask.task_id)
+@router.message(_States.NewSubTask.subtask_name)
+async def new_subtask_handler_func(
+    type: Union[types.Message, types.CallbackQuery], state: FSMContext
+):
+    await new_subtask_handler.handle(type, state)
+
+
+@router.callback_query(F.data == "edit_subtask")
+@router.message(Command("edit_subtask"))
+@router.message(_States.EditSubTask.subtask_id)
+async def edit_subtask_handler_func(
+    type: Union[types.Message, types.CallbackQuery], state: FSMContext
+):
+    await edit_subtask_handler.handle(type, state)
+
+
+@router.callback_query(F.data == "delete_subtask")
+@router.message(Command("delete_subtask"))
+@router.message(_States.DeleteSubTask.subtask_id)
+async def delete_subtask_handler_func(
+    type: Union[types.Message, types.CallbackQuery], state: FSMContext
+):
+    await delete_subtask_handler.handle(type, state)
