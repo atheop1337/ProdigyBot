@@ -13,4 +13,7 @@ edit_project_handler = handlers.EditProjectHandler(parent=handlers)
 delete_project_handler = handlers.DeleteProjectHandler(parent=handlers)
 all_project_handlers = handlers.AllProjectsHandler(parent=handlers)
 
-# ...
+# Task handlers
+new_task_handler = handlers.NewTaskHandler(parent=handlers)
+edit_task_handler = handlers.EditTaskHandler(parent=handlers)
+delete_task_handler = handlers.DeleteTaskHandler(parent=handlers)

@@ -168,6 +168,157 @@ class Database:
             logging.error(f"Error occurred while fetching projects: {e}")
         return projects
 
+    async def new_task(
+        self,
+        user_id: int,
+        project_id: int,
+        task_name: str,
+        task_description: str,
+        task_deadline: any,
+        priority: int,
+    ) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO tasks (project_id, name, description, deadline, priority) VALUES (?,?,?,?,?)",
+                        (
+                            project_id,
+                            task_name,
+                            task_description,
+                            task_deadline,
+                            priority,
+                        ),
+                    )
+                    await db.commit()
+                    logging.info(
+                        f"User with id {user_id} successfully created new task with name {task_name} for project with ID {project_id}"
+                    )
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while adding task: {e}")
+            return False
+
+    async def fetch_tasks(self, project_id: int) -> list:
+        tasks = []
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, name, description, deadline, priority, status FROM tasks WHERE project_id =?",
+                        (project_id,),
+                    )
+                    rows = await cursor.fetchall()
+                    for row in rows:
+                        tasks.append(
+                            {
+                                "id": row[0],
+                                "name": row[1],
+                                "description": row[2],
+                                "deadline": row[3],
+                                "priority": row[4],
+                                "status": row[5],
+                            }
+                        )
+                    logging.info(f"Fetched all tasks for project with id {project_id}")
+        except Exception as e:
+            logging.error(f"Error occurred while fetching tasks: {e}")
+        return tasks
+
+    async def fetch_task(self, task_id: int) -> dict:
+        task = None
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, name, description, deadline, priority, status FROM tasks WHERE id = ?",
+                        (task_id,),
+                    )
+                    row = await cursor.fetchone()
+                    if row:
+                        task = {
+                            "id": row[0],
+                            "name": row[1],
+                            "description": row[2],
+                            "deadline": row[3],
+                            "priority": row[4],
+                            "status": row[5],
+                        }
+                        logging.info(f"Fetched task with id {task_id}")
+                    else:
+                        logging.info(f"Task with id {task_id} not found.")
+        except Exception as e:
+            logging.error(f"Error occurred while fetching task with id {task_id}: {e}")
+
+        return task
+
+    async def user_has_tasks(self, user_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id FROM projects WHERE user_id = ?", (user_id,)
+                    )
+                    projects = await cursor.fetchall()
+
+                    if not projects:
+                        logging.info(f"User with id {user_id} has no projects.")
+                        return False
+
+                    for project in projects:
+                        project_id = project[0]
+                        await cursor.execute(
+                            "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+                            (project_id,),
+                        )
+                        task_count = await cursor.fetchone()
+
+                        if task_count and task_count[0] > 0:
+                            logging.info(
+                                f"User with id {user_id} has tasks in project {project_id}."
+                            )
+                            return True
+
+                    logging.info(f"User with id {user_id} has no tasks in any project.")
+                    return False
+        except Exception as e:
+            logging.error(f"Error occurred while checking user tasks: {e}")
+            return False
+
+    async def edit_task(self, task_id: int, progress: int) -> bool:
+        if progress == 1:
+            progress = "completed"
+        elif progress == 0:
+            progress = "in progress"
+        else:
+            logging.error(f"Invalid progress value: {progress}")
+            return False
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE tasks SET status=? WHERE id =?",
+                        (progress, task_id),
+                    )
+                    await db.commit()
+                    logging.info(f"Updated task with id {task_id} to status {progress}")
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while editing task: {e}")
+            return False
+
+    async def remove_task(self, task_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute("DELETE FROM tasks WHERE id =?", (task_id,))
+                    await db.commit()
+                    logging.info(f"Deleted task with id {task_id}")
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while deleting task: {e}")
+            return False
+
     async def close(self) -> None:
         if self.conn:
             await self.conn.close()

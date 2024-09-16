@@ -30,3 +30,17 @@ class _States:
 
     class DeleteProject(StatesGroup):
         project_id = State()
+
+    class NewTask(StatesGroup):
+        project_id = State()
+        task_name = State()
+        task_description = State()
+        deadline = State()
+        priority = State()
+
+    class EditTask(StatesGroup):
+        task_id = State()
+        progress = State()
+
+    class DeleteTask(StatesGroup):
+        task_id = State()
