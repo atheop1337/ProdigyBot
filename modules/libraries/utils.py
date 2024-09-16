@@ -29,4 +29,4 @@ class _States:
         project_new_description = State()
 
     class DeleteProject(StatesGroup):
-        project_name = State()
+        project_id = State()

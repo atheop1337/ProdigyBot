@@ -135,21 +135,18 @@ class Database:
             logging.error(f"Error occurred while editing project: {e}")
             return False
 
-    async def delete_project(self, user_id: int, name: str) -> bool:
+    async def delete_project(self, project_id: int) -> bool:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 async with db.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM projects WHERE user_id=? AND name=?",
-                        (user_id, name),
+                        "DELETE FROM projects WHERE id =?", (project_id,)
                     )
                     await db.commit()
-                    logging.info(
-                        f"User with id {user_id} successfully removed project with name {name}"
-                    )
+                    logging.info(f"Deleted project with id {project_id}")
                     return True
         except Exception as e:
-            logging.error(f"Error occurred while removing project: {e}")
+            logging.error(f"Error occurred while deleting project: {e}")
             return False
 
     async def fetch_projects(self, user_id: int) -> list:

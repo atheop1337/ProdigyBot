@@ -276,17 +276,17 @@ class Handlers:
                 logging.info(
                     f"User with id {self._parent._user_id} and name {self._parent._user_name} started deleting a project via command"
                 )
-                await message.answer(text="Введите имя проекта, который хотите удалить")
-                await state.set_state(_States.DeleteProject.project_name)
-            elif state_name == _States.DeleteProject.project_name:
-                await self._handle_project_name(message, state)
+                await message.answer(text="Введите ID проекта, который хотите удалить")
+                await state.set_state(_States.DeleteProject.project_id)
+            elif state_name == _States.DeleteProject.project_id:
+                await self._handle_project_id(message, state)
 
         async def _handle_callback_query(
             self, callback_query: types.CallbackQuery, state: FSMContext, state_name
         ):
             projects = await self._parent._db.fetch_projects(self._parent._user_id)
             if not projects:
-                await message.answer("У вас нет проектов для удаления.")
+                await callback_query.message.answer("У вас нет проектов для удаления.")
                 await state.clear()
                 return
 
@@ -296,37 +296,43 @@ class Handlers:
                 logging.info(
                     f"User with id {self._parent._user_id} started deleting a project via callback"
                 )
-                await callback_query.message.answer(
-                    text="Введите имя проекта, который хотите удалить"
-                )
-                await state.set_state(_States.DeleteProject.project_name)
-            elif state_name == _States.DeleteProject.project_name:
-                await self._handle_project_name(callback_query.message, state)
+                await callback_query.message.answer(text="Введите ID проекта")
+                await state.set_state(_States.DeleteProject.project_id)
+            elif state_name == _States.DeleteProject.project_id:
+                await self._handle_project_id(callback_query.message, state)
 
-        async def _handle_project_name(self, message: types.Message, state: FSMContext):
-            project_name = message.text
+        async def _handle_project_id(self, message: types.Message, state: FSMContext):
+            project_id = message.text
+            try:
+                project_id = int(project_id)
+            except ValueError:
+                await message.answer("ID проекта должен быть числом.")
+                await state.clear()
+                return
+
             logging.info(
-                f"User with id {self._parent._user_id} chose a project to delete: {project_name}"
+                f"User with id {self._parent._user_id} selected project with ID {project_id} for deletion"
             )
 
             data = await state.get_data()
             projects = data.get("projects")
 
-            project_names = [project["name"] for project in projects]
-            if project_name not in project_names:
-                await message.answer("Проект с таким именем не найден.")
+            project_to_delete = next(
+                (project for project in projects if project["id"] == project_id), None
+            )
+
+            if not project_to_delete:
+                await message.answer("Проект с таким ID не найден.")
                 await state.clear()
                 return
 
-            _deleted_project = await self._parent._db.delete_project(
-                self._parent._user_id, project_name
-            )
+            _deleted_project = await self._parent._db.delete_project(project_id)
 
             if _deleted_project:
                 _final_message = "Проект успешно удален. Проверьте командой /projects"
             else:
                 _final_message = (
-                    "Что-то пошло не так во время удаления проекта. Попробуйте позже"
+                    "Что-то пошло не так во время удаления проекта. Попробуйте позже."
                 )
 
             await message.answer(_final_message)

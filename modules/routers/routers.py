@@ -43,7 +43,7 @@ async def edit_handler(
 
 @router.callback_query(F.data == "delete")
 @router.message(Command("delete_project"))
-@router.message(_States.DeleteProject.project_name)
+@router.message(_States.DeleteProject.project_id)
 async def delete_handler(
     type: Union[types.Message, types.CallbackQuery], state: FSMContext
 ):
