@@ -4,6 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import CommandStart, Command
 from modules.handlers import (
     start_handler,
+    info_handler,
     new_project_handler,
     all_project_handlers,
     edit_project_handler,
@@ -14,6 +15,7 @@ from modules.handlers import (
     new_subtask_handler,
     edit_subtask_handler,
     delete_subtask_handler,
+    share_project_handler,
 )
 from modules.libraries.utils import _States
 from typing import Union
@@ -122,3 +124,20 @@ async def delete_subtask_handler_func(
     type: Union[types.Message, types.CallbackQuery], state: FSMContext
 ):
     await delete_subtask_handler.handle(type, state)
+
+
+@router.callback_query(F.data == "share_project")
+@router.message(Command("share_project"))
+@router.message(_States.ShareProject.project_id)
+@router.message(_States.ShareProject.participator_user_id)
+async def share_project_handler_func(
+    type: Union[types.Message, types.CallbackQuery], state: FSMContext
+):
+    await share_project_handler.handle(type, state)
+
+
+@router.message(Command(commands=["help", "info"]))
+async def info_handler_func(
+    type: Union[types.Message, types.CallbackQuery], state: FSMContext
+):
+    await info_handler.handle(type, state)

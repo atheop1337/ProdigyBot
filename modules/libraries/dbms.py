@@ -99,6 +99,19 @@ class Database:
             logging.error(f"Error occurred while adding user: {e}")
             return False
 
+    async def fetch_user(self, user_id: int) -> list:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT * FROM users WHERE user_id=?", (user_id,)
+                    )
+                    user = await cursor.fetchone()
+                    return user
+        except Exception as e:
+            logging.error(f"Error occurred while fetching user: {e}")
+            return None
+
     async def new_project(self, user_id: int, name: str, desc: str) -> bool:
         try:
             async with aiosqlite.connect(self.db_path) as db:
@@ -167,6 +180,20 @@ class Database:
         except Exception as e:
             logging.error(f"Error occurred while fetching projects: {e}")
         return projects
+
+    async def fetch_project(self, project_id: int) -> list:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, name, description FROM projects WHERE id =?",
+                        (project_id,),
+                    )
+                    project = await cursor.fetchone()
+                    return project
+        except Exception as e:
+            logging.error(f"Error occurred while fetching project: {e}")
+            return None
 
     async def new_task(
         self,
@@ -444,6 +471,98 @@ class Database:
                     return True
         except Exception as e:
             logging.error(f"Error occurred while deleting subtask: {e}")
+            return False
+
+    async def add_shared_project(self, project_id: int, user_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        """
+                        SELECT COUNT(*) 
+                        FROM shared_projects 
+                        WHERE project_id = ? AND user_id = ?
+                        """,
+                        (project_id, user_id),
+                    )
+                    exists = await cursor.fetchone()
+
+                    if exists and exists[0] > 0:
+                        logging.info(
+                            f"User with id {user_id} is already added to project with id {project_id}."
+                        )
+                        return False
+
+                    await cursor.execute(
+                        """
+                        INSERT INTO shared_projects (project_id, user_id) 
+                        VALUES (?,?)
+                        """,
+                        (project_id, user_id),
+                    )
+                    await db.commit()
+                    logging.info(
+                        f"Successfully added user with id {user_id} to project with id {project_id}."
+                    )
+                    return True
+        except Exception as e:
+            logging.error(f"Error occurred while adding user to project: {e}")
+            return False
+
+    async def fetch_shared_projects(self, user_id: int) -> list:
+        projects = []
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        """
+                        SELECT id, name 
+                        FROM projects 
+                        WHERE user_id = ?
+                        """,
+                        (user_id,),
+                    )
+                    owned_projects = await cursor.fetchall()
+
+                    await cursor.execute(
+                        """
+                        SELECT p.id, p.name
+                        FROM projects p
+                        JOIN shared_projects sp ON p.id = sp.project_id
+                        WHERE sp.user_id = ?
+                        """,
+                        (user_id,),
+                    )
+                    shared_projects = await cursor.fetchall()
+
+                    all_projects = owned_projects + shared_projects
+
+                    for project in all_projects:
+                        projects.append({"id": project[0], "name": project[1]})
+
+                    logging.info(f"Fetched all projects for user with id {user_id}")
+
+        except Exception as e:
+            logging.error(f"Error occurred while fetching projects: {e}")
+
+        return projects
+
+    async def check_project_member(self, project_id: int, user_id: int) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.cursor() as cursor:
+                    await cursor.execute(
+                        """
+                        SELECT 1 FROM shared_projects
+                        WHERE project_id = ? AND user_id = ?
+                        LIMIT 1
+                        """,
+                        (project_id, user_id),
+                    )
+                    result = await cursor.fetchone()
+                    return result is not None
+        except Exception as e:
+            logging.error(f"Error occurred while checking project membership: {e}")
             return False
 
     async def close(self) -> None:

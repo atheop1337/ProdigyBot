@@ -22,3 +22,9 @@ delete_task_handler = handlers.DeleteTaskHandler(parent=handlers)
 new_subtask_handler = handlers.NewSubTaskHandler(parent=handlers)
 edit_subtask_handler = handlers.EditSubTaskHandler(parent=handlers)
 delete_subtask_handler = handlers.DeleteSubTaskHandler(parent=handlers)
+
+# Share handlers
+share_project_handler = handlers.ShareProjectHandler(parent=handlers)
+
+# Help/Info handlers
+info_handler = handlers.InfoHandler(parent=handlers)

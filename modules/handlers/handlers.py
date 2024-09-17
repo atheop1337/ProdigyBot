@@ -72,46 +72,34 @@ class Handlers:
         async def _handle_message(
             self, message: types.Message, state: FSMContext, state_name
         ):
-            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            own_projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            shared_projects = await self._parent._db.fetch_shared_projects(
+                self._parent._user_id
+            )
+
+            shared_projects = [
+                proj
+                for proj in shared_projects
+                if proj["id"] not in {p["id"] for p in own_projects}
+            ]
 
             logging.info(
                 f"User with id {self._parent._user_id} and name {self._parent._user_name} fetched projects via command"
             )
 
-            if projects:
-                projects_list = []
-                for project in projects:
-                    tasks = await self._parent._db.fetch_tasks(project["id"])
-                    if tasks:
-                        task_list = []
-                        for task in tasks:
-                            subtasks = await self._parent._db.fetch_subtasks(
-                                project["id"]
-                            )
-                            if subtasks:
-                                subtask_list = "\n".join(
-                                    f"Subtask ID: {subtask['id']}, Name: {subtask['name']}, Status: {subtask['status']}"
-                                    for subtask in subtasks
-                                )
-                            else:
-                                subtask_list = "\tNo subtasks for this task."
+            if own_projects or shared_projects:
+                response_message = ""
 
-                            task_list.append(
-                                f"Task ID: {task['id']}, Name: {task['name']}, "
-                                f"Description: {task['description']}, Deadline: {task['deadline']}, "
-                                f"Priority: {task['priority']}, Status: {task['status']}\nSubtasks:\n{subtask_list}"
-                            )
-                        task_list = "\n".join(task_list)
-                    else:
-                        task_list = "No tasks for this project."
+                if own_projects:
+                    own_projects_list = await self._format_projects(own_projects)
+                    response_message += f"Your own projects:\n\n{own_projects_list}\n\n"
 
-                    projects_list.append(
-                        f"Project ID: {project['id']}, Name: {project['name']}, Description: {project['description']}\nTasks:\n{task_list}"
+                if shared_projects:
+                    shared_projects_list = await self._format_projects(shared_projects)
+                    response_message += (
+                        f"Projects you participate in:\n\n{shared_projects_list}\n"
                     )
 
-                response_message = f"Here are your projects:\n\n" + "\n\n".join(
-                    projects_list
-                )
             else:
                 response_message = "You have no projects."
 
@@ -120,49 +108,67 @@ class Handlers:
         async def _handle_callback_query(
             self, callback_query: types.CallbackQuery, state: FSMContext, state_name
         ):
-            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            own_projects = await self._parent._db.fetch_projects(self._parent._user_id)
+            shared_projects = await self._parent._db.fetch_shared_projects(
+                self._parent._user_id
+            )
 
-            if projects:
-                projects_list = []
-                for project in projects:
-                    tasks = await self._parent._db.fetch_tasks(project["id"])
-                    logging.info(
-                        f"Fetched tasks for project {project['id']} with name '{project['name']}': {tasks}"
-                    )
-                    if tasks:
-                        task_list = []
-                        for task in tasks:
-                            subtasks = await self._parent._db.fetch_subtasks(
-                                project["id"]
-                            )
-                            if subtasks:
-                                subtask_list = "\n".join(
-                                    f"\tSubtask ID: {subtask['id']}, Name: {subtask['name']}"
-                                    for subtask in subtasks
-                                )
-                            else:
-                                subtask_list = "\tNo subtasks for this task."
+            shared_projects = [
+                proj
+                for proj in shared_projects
+                if proj["id"] not in {p["id"] for p in own_projects}
+            ]
 
-                            task_list.append(
-                                f"Task ID: {task['id']}, Name: {task['name']}, "
-                                f"Description: {task['description']}, Deadline: {task['deadline']}, "
-                                f"Priority: {task['priority']}, Status: {task['status']}\nSubtasks:\n{subtask_list}"
-                            )
-                        task_list = "\n".join(task_list)
-                    else:
-                        task_list = "No tasks for this project."
+            if own_projects or shared_projects:
+                response_message = ""
 
-                    projects_list.append(
-                        f"Project ID: {project['id']}, Name: {project['name']}, Description: {project['description']}\nTasks:\n{task_list}"
+                if own_projects:
+                    own_projects_list = await self._format_projects(own_projects)
+                    response_message += f"Your own projects:\n\n{own_projects_list}\n\n"
+
+                if shared_projects:
+                    shared_projects_list = await self._format_projects(shared_projects)
+                    response_message += (
+                        f"Projects you participate in:\n\n{shared_projects_list}\n"
                     )
 
-                response_message = f"Here are your projects:\n\n" + "\n\n".join(
-                    projects_list
-                )
             else:
                 response_message = "You have no projects."
 
             await callback_query.message.answer(response_message)
+
+        async def _format_projects(self, projects):
+            projects_list = []
+            for project in projects:
+                tasks = await self._parent._db.fetch_tasks(project["id"])
+                if tasks:
+                    task_list = []
+                    for task in tasks:
+                        subtasks = await self._parent._db.fetch_subtasks(task["id"])
+                        if subtasks:
+                            subtask_list = "\n".join(
+                                f"Subtask ID: {subtask['id']}, Name: {subtask['name']}, Status: {subtask['status']}"
+                                for subtask in subtasks
+                            )
+                        else:
+                            subtask_list = "No subtasks for this task."
+
+                        task_list.append(
+                            f"Task ID: {task['id']}, Name: {task['name']}, "
+                            f"Description: {task['description']}, Deadline: {task['deadline']}, "
+                            f"Priority: {task['priority']}, Status: {task['status']}\nSubtasks:\n{subtask_list}"
+                        )
+                    task_list = "\n".join(task_list)
+                else:
+                    task_list = "No tasks for this project."
+
+                description = project.get("description", "No description available")
+
+                projects_list.append(
+                    f"Project ID: {project['id']}, Name: {project['name']}, Description: {description}\nTasks:\n{task_list}"
+                )
+
+            return "\n\n".join(projects_list)
 
     class NewProjectHandler(BaseHandler):
         async def _handle_message(
@@ -964,9 +970,7 @@ class Handlers:
             elif state_name == _States.EditSubTask.subtask_id:
                 await self._handle_subtask_id(message, state)
 
-        async def _handle_subtask_id(
-            self, message: types.Message, state: FSMContext
-        ):
+        async def _handle_subtask_id(self, message: types.Message, state: FSMContext):
             subtask_id = message.text
 
             try:
@@ -975,7 +979,7 @@ class Handlers:
                 await message.answer("ID подзадачи должен быть числом.")
                 await state.clear()
                 return
-                
+
             _exist = await self._parent._db.fetch_subtask(subtask_id)
 
             if not _exist:
@@ -998,3 +1002,199 @@ class Handlers:
 
             await message.answer(_final_message)
             await state.clear()
+
+    class ShareProjectHandler(BaseHandler):
+        async def _handle_message(
+            self, message: types.Message, state: FSMContext, state_name
+        ):
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+
+            if not projects:
+                await message.answer("У вас нет проектов для расширения.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started sharing project via command"
+                )
+                await message.answer(text="Выберите ID проекта для расширения")
+                await state.set_state(_States.ShareProject.project_id)
+
+            elif state_name == _States.ShareProject.project_id:
+                await self._handle_project_id(message, state)
+            elif state_name == _States.ShareProject.participator_user_id:
+                await self._handle_participator_user_id(message, state)
+
+        async def _handle_callback_query(
+            self, callback_query: types.CallbackQuery, state: FSMContext, state_name
+        ):
+            projects = await self._parent._db.fetch_projects(self._parent._user_id)
+
+            if not projects:
+                await message.answer("У вас нет проектов для расширения.")
+                await state.clear()
+                return
+
+            if state_name is None:
+                logging.info(
+                    f"User with id {self._parent._user_id} and name {self._parent._user_name} started sharing project via command"
+                )
+                await message.answer(text="Выберите ID проекта для расширения")
+                await state.set_state(_States.ShareProject.project_id)
+
+            elif state_name == _States.ShareProject.project_id:
+                await self._handle_project_id(message, state)
+            elif state_name == _States.ShareProject.participator_user_id:
+                await self._handle_participator_user_id(message, state)
+
+        async def _handle_project_id(self, message: types.Message, state: FSMContext):
+            project_id = message.text
+            try:
+                int(project_id)
+            except ValueError:
+                await message.answer("ID проекта должен быть числом.")
+                await state.clear()
+                return
+
+            _exist = await self._parent._db.fetch_project(project_id)
+            logging.info(_exist)
+            if not _exist:
+                await message.answer(
+                    "Проект с таким ID не существует. Попробуйте еще раз."
+                )
+                await state.clear()
+                return
+
+            await state.update_data(project_id=project_id)
+
+            logging.info(
+                f"User with id {self._parent._user_id} and name {self._parent._user_name} started sharing project with ID {project_id}"
+            )
+            await message.answer(
+                text="Выберите ID участника для расширения доступа к проекту"
+            )
+            await state.set_state(_States.ShareProject.participator_user_id)
+
+        async def _handle_participator_user_id(
+            self, message: types.Message, state: FSMContext
+        ):
+            participator_user_id = message.text
+            try:
+                int(participator_user_id)
+            except ValueError:
+                await message.answer("ID участника должен быть числом.")
+                await state.clear()
+                return
+
+            if participator_user_id == self._parent._user_id:
+                await message.answer(
+                    "Я понимаю, у вас нету друзей, но самого себя добавить в участники нельзя."
+                )
+                await state.clear()
+                return
+
+            _exist = await self._parent._db.fetch_user(participator_user_id)
+            if not _exist:
+                await message.answer(
+                    "Пользователь с таким ID не существует. Попробуйте еще раз."
+                )
+                await state.clear()
+                return
+
+            data = await state.get_data()
+            project_id = data.get("project_id")
+
+            if await self._parent._db.check_project_member(
+                project_id, participator_user_id
+            ):
+                await message.answer("Этот пользователь уже имеет доступ к проекту.")
+                await state.clear()
+                return
+
+            _check = await self._parent._db.add_shared_project(
+                project_id, participator_user_id
+            )
+
+            if _check:
+                _final_message = (
+                    "Доступ к проекту успешно расширен. Проверьте вашу личную страницу."
+                )
+                logging.info(
+                    f"Access to project with ID {project_id} successfully extended to user with ID {participator_user_id}."
+                )
+            else:
+                _final_message = (
+                    "Ошибка при расширении доступа к проекту. Попробуйте позже."
+                )
+                logging.error(
+                    f"Failed to extend access to project with ID {project_id} to user with ID {participator_user_id}."
+                )
+
+            await message.answer(_final_message)
+            await state.clear()
+
+    class InfoHandler(BaseHandler):
+        async def _handle_message(
+            self, message: types.Message, state: FSMContext, state_name
+        ):
+            info_message = (
+                "🔹 **Регистрация пользователей**\n"
+                "- `/start` — Регистрация пользователя в базе данных.\n"
+                "- Проверка пользователя в базе данных при каждом обращении.\n\n"
+                "🔹 **Создание и управление проектами**\n"
+                "- `/new_project` — Создание нового проекта с указанием названия и описания.\n"
+                "- `/edit_project` — Редактирование названия и описания существующего проекта.\n"
+                "- `/delete_project` — Удаление проекта.\n"
+                "- `/projects` — Просмотр списка проектов.\n\n"
+                "🔹 **Создание и управление задачами**\n"
+                "- `/add_task` — Добавление задачи в проект с дедлайном, приоритетом и подзадачами.\n"
+                "- `/edit_task` — Редактирование задачи: изменение дедлайна, описания, приоритета, прогресса.\n"
+                "- `/delete_task` — Удаление задачи.\n\n"
+                "🔹 **Подзадачи**\n"
+                "- `/add_subtask` — Добавление подзадачи к задаче.\n"
+                "- `/edit_subtask` — Редактирование подзадачи.\n"
+                "- `/delete_subtask` — Удаление подзадачи.\n"
+                "- Подзадачи могут быть выполнены отдельно от основной задачи.\n\n"
+                "🔹 **Отслеживание прогресса**\n"
+                '- Задачи могут иметь статус: "в процессе", "выполнено".\n'
+                "- Возможность отслеживать прогресс задач и подзадач через `/progress` (реализовано в `/projects`).\n"
+                "- Статистика завершенных и активных задач.\n\n"
+                "🔹 **Деление проектов с другими пользователями**\n"
+                "- `/share_project` — Возможность поделиться проектом с другим пользователем по ID или username.\n"
+                "- Совместное управление проектом для добавленных пользователей.\n"
+            )
+
+            await message.answer(info_message, parse_mode="Markdown")
+
+        async def _handle_callback_query(
+            self, callback_query: types.CallbackQuery, state: FSMContext, state_name
+        ):
+            info_message = (
+                "🔹 **Регистрация пользователей**\n"
+                "- `/start` — Регистрация пользователя в базе данных.\n"
+                "- Проверка пользователя в базе данных при каждом обращении.\n\n"
+                "🔹 **Создание и управление проектами**\n"
+                "- `/new_project` — Создание нового проекта с указанием названия и описания.\n"
+                "- `/edit_project` — Редактирование названия и описания существующего проекта.\n"
+                "- `/delete_project` — Удаление проекта.\n"
+                "- `/projects` — Просмотр списка проектов.\n\n"
+                "🔹 **Создание и управление задачами**\n"
+                "- `/add_task` — Добавление задачи в проект с дедлайном, приоритетом и подзадачами.\n"
+                "- `/edit_task` — Редактирование задачи: изменение дедлайна, описания, приоритета, прогресса.\n"
+                "- `/delete_task` — Удаление задачи.\n\n"
+                "🔹 **Подзадачи**\n"
+                "- `/add_subtask` — Добавление подзадачи к задаче.\n"
+                "- `/edit_subtask` — Редактирование подзадачи.\n"
+                "- `/delete_subtask` — Удаление подзадачи.\n"
+                "- Подзадачи могут быть выполнены отдельно от основной задачи.\n\n"
+                "🔹 **Отслеживание прогресса**\n"
+                '- Задачи могут иметь статус: "в процессе", "выполнено".\n'
+                "- Возможность отслеживать прогресс задач и подзадач через `/progress` (реализовано в `/projects`).\n"
+                "- Статистика завершенных и активных задач.\n\n"
+                "🔹 **Деление проектов с другими пользователями**\n"
+                "- `/share_project` — Возможность поделиться проектом с другим пользователем по ID или username.\n"
+                "- Совместное управление проектом для добавленных пользователей.\n"
+            )
+
+            await callback_query.message.answer(info_message, parse_mode="Markdown")

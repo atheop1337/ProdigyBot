@@ -54,3 +54,7 @@ class _States:
 
     class DeleteSubTask(StatesGroup):
         subtask_id = State()
+
+    class ShareProject(StatesGroup):
+        project_id = State()
+        participator_user_id = State()
